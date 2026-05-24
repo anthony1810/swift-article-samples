@@ -17,13 +17,16 @@ struct-based-dependencies/
 │   │   ├── LocationClient+Test.swift                testValue with fatalError closures
 │   │   ├── LocationClient+Decorators.swift          .logged() as a value transformation
 │   │   ├── FindFriendsViewModel.swift               Consumer taking the whole client
-│   │   └── EnableLocationEmptyStateViewModel.swift  Consumer taking ONE closure
+│   │   ├── EnableLocationEmptyStateViewModel.swift  Consumer taking ONE closure
+│   │   ├── FindFriendsView.swift                    SwiftUI view + #Preview blocks
+│   │   └── EnableLocationEmptyStateView.swift       SwiftUI view + #Preview (per-endpoint)
 │   └── LocationFeatureProtocolBased/                ← protocol-based (the conventional way)
 │       ├── LocationServiceProtocol.swift            The protocol
 │       ├── LiveLocationService.swift                Real CoreLocation conformance
 │       ├── MockLocationService.swift                Hand-rolled mock
 │       ├── LoggingLocationService.swift             Decorator wrapper class
-│       └── FindFriendsViewModel.swift               Consumer typed against the protocol
+│       ├── FindFriendsViewModel.swift               Consumer typed against the protocol
+│       └── FindFriendsView.swift                    SwiftUI view + #Preview blocks
 └── Tests/
     ├── LocationFeatureTests/                        Tests using testValue + per-field override
     │   ├── FindFriendsViewModelTests.swift
@@ -49,7 +52,16 @@ struct-based-dependencies/
 swift test
 ```
 
-Both targets build and test. No external dependencies. Pure SPM + CoreLocation.
+Both targets build and test. No external dependencies. Pure SPM + CoreLocation + SwiftUI.
+
+### Live previews
+
+Open the package in Xcode (`xed .` from this folder, or File → Open in Xcode). The two `FindFriendsView.swift` files (one per module) ship `#Preview` blocks demonstrating both approaches side-by-side:
+
+- `LocationFeature/FindFriendsView.swift` — uses `LocationClient.previewValue` and partial overrides (`var c = .previewValue; c.requestAuthorization = { .denied }; return c`).
+- `LocationFeatureProtocolBased/FindFriendsView.swift` — constructs a full `MockLocationService` per scenario, because that's the smallest unit a `LocationServiceProtocol`-typed dependency can take.
+
+`EnableLocationEmptyStateView.swift` (struct-based only) demonstrates **per-endpoint injection**: its view model takes exactly one closure (`requestAuthorization`), so the preview only has to construct that single function.
 
 ## What's NOT in here
 
