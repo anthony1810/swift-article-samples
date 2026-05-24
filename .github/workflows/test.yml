@@ -1,0 +1,19 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  struct-based-dependencies:
+    name: struct-based-dependencies — swift test
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: struct-based-dependencies
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: swift test
