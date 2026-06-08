@@ -11,6 +11,7 @@ Each sample is a self-contained Swift Package. Open the folder in Xcode (File â†
 | Topic | Folder |
 |---|---|
 | Dependency design: where struct-based wins over protocol-based | [`struct-based-dependencies/`](./struct-based-dependencies/) |
+| AppRefresher: a typed refresh bus baked into ScreenStateKit 1.3.0 | [`app-refresher/`](./app-refresher/) |
 
 ## License
 

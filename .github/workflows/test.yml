@@ -17,3 +17,14 @@ jobs:
       - uses: actions/checkout@v4
       - run: swift --version
       - run: swift test
+
+  app-refresher:
+    name: app-refresher — swift test
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: app-refresher
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: swift test
