@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/anthony1810/swift-article-samples/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/anthony1810/swift-article-samples/actions/workflows/test.yml)
 
-Companion code for *Dependency design: where struct-based wins over protocol-based*.
+Companion code for [*Dependency design: where struct-based wins over protocol-based*](https://medium.com/@qquang269/dependency-design-where-struct-based-wins-over-protocol-based-ea43e299d29b).
 
 Two parallel implementations of the same toy feature (a `LocationService` consumed by a `FindFriendsViewModel`), so you can see the line-by-line difference and run the tests side by side.
 

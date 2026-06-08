@@ -8,10 +8,10 @@ Each sample is a self-contained Swift Package. Open the folder in Xcode (File â†
 
 ## Articles
 
-| Topic | Folder |
+| Article | Code |
 |---|---|
-| Dependency design: where struct-based wins over protocol-based | [`struct-based-dependencies/`](./struct-based-dependencies/) |
-| AppRefresher: a typed refresh bus baked into ScreenStateKit 1.3.0 | [`app-refresher/`](./app-refresher/) |
+| [Dependency design: where struct-based wins over protocol-based](https://medium.com/@qquang269/dependency-design-where-struct-based-wins-over-protocol-based-ea43e299d29b) | [`struct-based-dependencies/`](./struct-based-dependencies/) |
+| [Move away from NotificationCenter with AppRefresher â€” a SwiftUI-native sender](https://medium.com/@qquang269/move-away-from-notificationcenter-with-apprefresher-a-swiftui-native-sender-8184bd5b95e7) | [`app-refresher/`](./app-refresher/) |
 
 ## License
 

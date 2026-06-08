@@ -1,24 +1,27 @@
-# AppRefresher: a typed refresh bus for SwiftUI
+# AppRefresher: a SwiftUI-native sender — move on from NotificationCenter
 
-*Keep your screens in sync by broadcasting a change once — and handing the fresh object straight to whoever's listening. New in ScreenStateKit 1.3.0.*
+*You want to tell a distant view that a piece of data just changed — immediately, with a typed payload, and with fine-grained control over exactly who reacts — without cluttering your code with NotificationCenter. New in ScreenStateKit 1.3.0.*
 
 ---
 
 ## The problem
 
-Every app hits this eventually: one screen changes data, and another screen is now showing something stale.
+You need to inform a *distant* view that a piece of data just changed — right now, not on its next fetch. And you want control: **which** screens hear it, **when** they react, and **what** data rides along.
 
-You edit a team's name on a settings screen. Tucked behind it in the navigation stack is a header that still shows the old name. When the user taps back, it should already be correct.
+Take a concrete case: you edit a team's name on a settings screen. Tucked behind it in the navigation stack is a header still showing the old name. When the user taps back, it should already be correct.
 
-The usual fixes all have a tax:
+`NotificationCenter` can do this — but it makes you pay:
 
-- **Re-fetch on `onAppear`** — a network round-trip for data you *already have in hand*.
-- **`NotificationCenter`** — stringly-typed names, `userInfo: [AnyHashable: Any]` you have to cast back, and `addObserver`/`removeObserver` you have to remember to balance.
-- **Delegates / closures threaded through coordinators** — couples two screens that shouldn't know each other exists.
+- **Stringly-typed names** — a typo compiles fine and silently never fires.
+- **`userInfo: [AnyHashable: Any]`** — you box the payload and cast it back by hand on the other side.
+- **Manual lifecycle** — `addObserver` / `removeObserver` you have to remember to balance.
+- **No real targeting** — every observer of a name wakes up; "when and who" is left to you.
 
-What we actually want: the screen that *made* the change should be able to say "team settings just changed — and here's the new object," and any interested screen should be able to react, **without the two ever referencing each other.**
+The other fallbacks aren't free either: re-fetching on `onAppear` is a network round-trip for data you *already hold*, and threading delegates through coordinators couples two screens that shouldn't know each other exists.
 
-That's `AppRefresher`.
+What you actually want: the screen that *made* the change says "team settings just changed — here's the new object," and any interested screen reacts — **without the two ever referencing each other**, and written natively for SwiftUI.
+
+That's `AppRefresher` — another tool from ScreenStateKit, new in v1.3.0.
 
 ## The idea
 
@@ -39,175 +42,76 @@ TeamHeader (receiver)  → forwards the payload to its store → store mutates s
 
 It's `@MainActor @Observable` (no Combine), and every payload is `Sendable`, so it's concurrency-safe by construction.
 
-## The scenario
+## Three steps to implement
 
-A team app. On **Screen A** the user edits the team's name and colour. **Screen B** — a header — must reflect the new values the instant they're saved, with no API refetch and no local database to re-read.
-
-Let's wire it end to end. (Full runnable package: [`app-refresher/`](./).)
-
-## Step 1 — Define your domain
-
-Two types: what can change, and the payload it carries. The `Source` enum's associated values are where the fresh object travels.
+**1 — Define what changes + the payload.** An `OptionSet` for *what*, an enum for the object that rides along:
 
 ```swift
-import ScreenStateKit
-
-public struct TeamRefresh: OptionSet, Sendable {
-    public let rawValue: Int
-    public init(rawValue: Int) { self.rawValue = rawValue }
-
-    public static let settings = TeamRefresh(rawValue: 1 << 0)
-    public static let roster   = TeamRefresh(rawValue: 1 << 1)
+struct TeamRefresh: OptionSet, Sendable {
+    let rawValue: Int
+    static let settings = TeamRefresh(rawValue: 1 << 0)
 }
 
-public enum TeamSource: Sendable, Equatable {
-    case settingsUpdated(TeamSettings)
-    case playerJoined(Player)
+enum TeamSource: Sendable {
+    case settingsUpdated(TeamSettings)        // the payload travels here
 }
 
-public typealias TeamRefresher = AppRefresher<TeamRefresh, TeamSource>
+typealias TeamRefresher = AppRefresher<TeamRefresh, TeamSource>
 ```
 
-Because `Option` is an `OptionSet`, you can broadcast combined signals (`[.settings, .roster]`) in one call. And because `Source` is a plain enum, the payload is fully typed — no casting on the other end.
-
-## Step 2 — Create once, host at the root
-
-Create a single `TeamRefresher` and inject it into the environment with `.appRefresherHost(_:)`. Every screen below can now send or receive.
+**2 — Broadcast from the sender.** Host one instance at the root, then fire the option + the fresh object:
 
 ```swift
-import SwiftUI
-import ScreenStateKit
+RootView().appRefresherHost(refresher)        // once, near the root
 
-public struct TeamSyncRootView: View {
-    @State private var refresher = TeamRefresher()
+refresher.refresh(.settings, source: .settingsUpdated(updated))
+```
 
-    public var body: some View {
-        NavigationStack {
-            List {
-                Section("Receiver — reacts to the bus") {
-                    TeamHeaderView()
-                }
-                Section {
-                    NavigationLink("Open Edit Settings (sender)") {
-                        EditTeamSettingsView(refresher: refresher)
-                    }
-                }
-            }
-        }
-        .appRefresherHost(refresher)
-    }
+**3 — React on the receiver.** Filter by option, read the payload, forward it to your store:
+
+```swift
+.onAppRefresh(TeamRefresh.settings) { (source: TeamSource?) in
+    guard case let .settingsUpdated(settings) = source else { return }
+    store.nonisolatedReceive(action: .applySettings(settings))
 }
 ```
 
-## Step 3 — Broadcast on Screen A
+That's the whole loop: **define → broadcast → react.**
 
-The sender is a ScreenStateKit store. After it saves, it fires the option **and** the brand-new object:
+## The keys to getting it right
 
-```swift
-public actor EditTeamSettingsStore: ScreenActionStore {
-    private let refresher: TeamRefresher
+A few details make or break it:
 
-    public init(refresher: TeamRefresher) { self.refresher = refresher }
+- **Host once.** `appRefresherHost(_:)` injects a single shared instance — the sender and every receiver share that one.
+- **Mark your `ScreenState` subclass `@Observable`.** The macro only instruments the class it's attached to; a subclass's *own* properties won't trigger SwiftUI re-renders unless the subclass is `@Observable` too. (Silent trap: the model updates, the view doesn't.)
+- **Mutations go through the store, never `viewState`.** The view forwards an action; the store owns the change.
+- **Spell the option type at the call site** (`TeamRefresh.settings`) and annotate the closure's `Source?` — a chained modifier gives the compiler nothing to infer the generics from.
+- **Pick the timing.** `.onNextAppear` (default) defers until a hidden screen reappears — perfect for push/pop, so dismiss the sender after saving and the receiver applies the change as it comes back. `.immediate` runs right away, even off-screen. Every emission carries a unique id, so firing the same option twice still delivers both times.
 
-    public func receive(action: Action) async throws {
-        switch action {
-        case let .save(name, colorHex):
-            let updated = TeamSettings(id: "team-1", name: name, colorHex: colorHex)
-            await refresher.refresh(.settings, source: .settingsUpdated(updated))
-        }
-    }
+## See the full example
 
-    public enum Action: ActionLockable, LoadingTrackable, Hashable {
-        case save(name: String, colorHex: String)
-        public var canTrackLoading: Bool { true }
-    }
-}
-```
+A complete, tested package — sender, receiver, the ScreenStateKit Three Pillars, and `#Preview`s you can drive — lives here:
 
-That's the whole "publish" side: `refresher.refresh(.settings, source: .settingsUpdated(updated))`.
-
-## Step 4 — React on Screen B
-
-The receiver listens with `.onAppRefresh(_:)`. It pattern-matches the payload and — importantly — **forwards it to its store as an action**. In ScreenStateKit all mutations go through the store; the view never touches `viewState` directly.
-
-```swift
-public struct TeamHeaderView: View {
-    @State private var viewState = TeamHeaderState()
-    @State private var store = TeamHeaderStore()
-
-    public var body: some View {
-        HStack {
-            Circle().fill(Color(hex: viewState.colorHex)).frame(width: 28, height: 28)
-            Text(viewState.name).font(.headline)
-        }
-        .task { await store.binding(state: viewState) }
-        .onAppRefresh(TeamRefresh.settings) { (source: TeamSource?) in
-            guard case let .settingsUpdated(settings) = source else { return }
-            store.nonisolatedReceive(action: .applySettings(settings))
-        }
-    }
-}
-```
-
-And the store applies it — straight from the payload, **zero refetch**:
-
-```swift
-public actor TeamHeaderStore: ScreenActionStore {
-    public private(set) var viewState: TeamHeaderState?
-
-    public func receive(action: Action) async throws {
-        switch action {
-        case let .applySettings(settings):
-            await viewState?.updateState {
-                $0.name = settings.name
-                $0.colorHex = settings.colorHex
-            }
-        }
-    }
-
-    public enum Action: ActionLockable, LoadingTrackable, Hashable {
-        case applySettings(TeamSettings)
-        public var canTrackLoading: Bool { false }
-    }
-}
-```
-
-> **Spell the option type at the call site** (`TeamRefresh.settings`, not `.settings`). A chained view modifier gives the compiler no contextual type to infer the generic `Option` from. Annotate the closure's `Source?` for the same reason.
-
-## A detail worth knowing: delivery timing
-
-`onAppRefresh` takes a `behavior`:
-
-- **`.onNextAppear`** (default) — if the screen is hidden (behind a pushed view), the signal is *stored* and runs on the screen's next `onAppear`. No point reloading a list nobody is looking at.
-- **`.immediate`** — runs the instant the signal fires, even off-screen, when freshness can't wait.
-
-In our scenario the header sits *under* the edit screen in the nav stack, so `.onNextAppear` is exactly right: it applies the new settings the moment the user pops back.
-
-One more subtlety: every emission carries a unique `id`, so firing the **same** option twice in a row still triggers the receiver both times — something a naive `@Published` value would coalesce away.
-
-## Why it's nice
-
-- **Type-safe** — no notification strings, no `userInfo` casting. `Source` is an enum you `switch` on exhaustively.
-- **Payload included** — the receiver applies the object straight from the signal, skipping a refetch or DB read.
-- **Auto lifecycle** — SwiftUI subscribes/unsubscribes with the view. No `addObserver`/`removeObserver`, no leaks, no `[weak self]` dance.
-- **Concurrency-safe** — `@MainActor @Observable`, payloads are `Sendable`; zero Combine.
-- **Mutations stay in the store** — the view forwards an action; the store owns the state change.
-
-## Try it
-
-```swift
-// Package.swift
-.package(url: "https://github.com/anthony1810/ScreenStateKit.git", from: "1.3.0")
-```
-
-The complete, tested sample lives in [`app-refresher/`](./). Run the flow:
+> 📦 **[github.com/anthony1810/swift-article-samples → `app-refresher/`](https://github.com/anthony1810/swift-article-samples/tree/main/app-refresher)**
 
 ```sh
-swift test
+swift test     # runs the flow; open in Xcode (xed .) to drive the previews
 ```
 
-…or open it in Xcode (`xed .`) and drive the `#Preview` blocks: edit the name and colour, pop back, and watch the header update from the payload — no network in sight.
+Tap Save on the edit screen, pop back, and watch the header update straight from the payload — no network in sight.
+
+## Why this is better
+
+Next to reaching for `NotificationCenter`:
+
+- **Type-safe end to end** — no notification strings, no `userInfo` casting; `Source` is an enum you `switch` on.
+- **Payload included** — the receiver applies the fresh object straight from the signal, skipping a refetch or DB read.
+- **Auto lifecycle** — SwiftUI subscribes/unsubscribes with the view; no `addObserver`/`removeObserver`, no leaks.
+- **Real targeting** — receivers filter by option and choose their own timing; you control *when, where, and who*.
+- **Concurrency-safe, SwiftUI-native** — `@MainActor @Observable`, `Sendable` payloads, zero Combine; mutations stay in the store.
+
+You wanted to tell a distant view about a change — immediately, precisely, and without the NotificationCenter tax. That's exactly what AppRefresher gives you.
 
 ---
 
-*`AppRefresher` ships in ScreenStateKit 1.3.0. ⭐️ [github.com/anthony1810/ScreenStateKit](https://github.com/anthony1810/ScreenStateKit)*
+*AppRefresher ships in ScreenStateKit 1.3.0. ⭐️ [github.com/anthony1810/ScreenStateKit](https://github.com/anthony1810/ScreenStateKit)*

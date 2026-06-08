@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/anthony1810/swift-article-samples/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/anthony1810/swift-article-samples/actions/workflows/test.yml)
 
-Companion code for *AppRefresher — a typed refresh bus baked into ScreenStateKit 1.3.0*.
+Companion code for [*Move away from NotificationCenter with AppRefresher — a SwiftUI-native sender*](https://medium.com/@qquang269/move-away-from-notificationcenter-with-apprefresher-a-swiftui-native-sender-8184bd5b95e7).
 
 One screen changes data; another must reflect it instantly. The usual fixes — `NotificationCenter` strings, delegate wiring — couple screens that shouldn't know about each other. `AppRefresher` is a tiny, type-safe bus on the SwiftUI environment: broadcast a change from anywhere, react anywhere, and hand the **fresh object** straight to the listener.
 
