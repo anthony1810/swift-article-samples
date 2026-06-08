@@ -35,7 +35,7 @@ TeamHeader (receiver) → forwards the payload to its store → store mutates st
 
 ```
 app-refresher/
-├── Package.swift                              Depends on ScreenStateKit 1.3.0
+├── Package.swift                              Depends on ScreenStateKit 1.3.1
 ├── Sources/TeamSyncFeature/
 │   ├── Domain/                                Sendable models
 │   │   ├── TeamSettings.swift
@@ -73,4 +73,4 @@ app-refresher/
 swift test
 ```
 
-Resolves ScreenStateKit 1.3.0 from SPM, builds, and runs the flow tests. Open in Xcode (`xed .`) to drive the `#Preview` blocks: edit the name/colour on the sender, pop back, and watch the header update from the payload.
+Resolves ScreenStateKit 1.3.1 from SPM, builds, and runs the flow tests. Open in Xcode (`xed .`) to drive the `#Preview` blocks: edit the name/colour on the sender, pop back, and watch the header update from the payload.
